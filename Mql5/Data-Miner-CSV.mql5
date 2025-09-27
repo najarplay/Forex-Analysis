@@ -1,19 +1,19 @@
 // Script: Data-Miner-csv.mq5                                       
-// Descripcion: Exporta datos OHLC desde MetaTrader a un archivo    
-// CSV, con manejo de errores por barra faltante.                   
+// Descripcion: Exporta datos OHLC desde MetaTrader a un archivo CSV, con manejo de errores por barra faltante.   
+// Cambios : implemento una selecion de fechas (starDate(11), endDate(12)), genera una selecion de datos mejor  
 
 #include <Files\FileTxt.mqh>  // Incluye la libreria para manejo de archivos de texto
 
 // Parametros configurables por el usuario
 input string symbol = "EURUSD";                      // Simbolo del instrumento (ej. EURUSD)
 input ENUM_TIMEFRAMES timeframe = PERIOD_M1;         // Marco temporal (ej. PERIOD_M1 = 1 minuto)
-input int bars = 10000;                              // Numero de barras (velas) a exportar
+// Nuevas entradas para rango de fechas
+input datetime startDate = D'2025.08.01 00:00';      // Fecha de inicio
+input datetime endDate   = D'2025.08.31 23:59';      // Fecha de fin
 
 void OnStart()
 {
-   datetime currentTime = TimeCurrent();                                       //--- Obtiene la hora actual del servidor
    int periodSeconds = PeriodSeconds(timeframe);                               //--- Calcula la duracion de cada vela en segundos
-   datetime startTime = currentTime - bars * periodSeconds;                    //--- Calcula el tiempo inicial desde donde se exportaran los datos
    string filename = symbol + "_" + EnumToString(timeframe) + ".csv";          //--- Construye el nombre del archivo CSV: ej. EURUSD_PERIOD_M1.csv
    int fileHandle = FileOpen(filename, FILE_WRITE | FILE_CSV | FILE_ANSI);     //--- Abre el archivo para escritura en formato CSV 
    
@@ -25,15 +25,15 @@ void OnStart()
 
    FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");    //--- Escribe la cabecera del archivo CSV
 
-   for(int i = 0; i < bars; i++)                                               ///--- Bucle para recorrer y exportar cada barra
+   for(datetime t = startDate; t <= endDate; t += periodSeconds)               ///--- Bucle para recorrer y exportar cada barra
    {
-      datetime targetTime = startTime + i * periodSeconds;                     //--- Calcula el tiempo objetivo de la barra actual
       MqlRates rate[];                                                         //--- Declara array para almacenar los datos de la barra
-      int copied = CopyRates(symbol, timeframe, targetTime, 1, rate);          //--- Copia los datos de la barra desde el grafico
-      if(copied <= 0 || ArraySize(rate) == 0)                                  //--- Si no se pudo copiar la barra, escribe "ERROR" en el archivo
+      int copied = CopyRates(symbol, timeframe, t, 1, rate);                   //--- Copia los datos de la barra desde el grafico
+                                                                               //--- Si no se pudo copiar la barra, escribe "ERROR" en el archivo
+      if(copied <= 0 || ArraySize(rate) == 0 || rate[0].time < startDate || rate[0].time > endDate) 
       {
          FileWrite(fileHandle,
-                   TimeToString(targetTime, TIME_DATE | TIME_MINUTES),
+                   TimeToString(t, TIME_DATE | TIME_MINUTES),
                    "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
          continue;
       }
