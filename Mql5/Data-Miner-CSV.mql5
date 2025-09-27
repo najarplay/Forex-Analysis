@@ -1,6 +1,9 @@
 // Script: Data-Miner-csv.mq5                                       
 // Descripcion: Exporta datos OHLC desde MetaTrader a un archivo CSV, con manejo de errores por barra faltante.   
-// Cambios : implemento una selecion de fechas (starDate(11), endDate(12)), genera una selecion de datos mejor  
+// Que hace cada mejora
+// rate[0].open == 0.0	            L37 : evita escribir barras sin datos reales.
+// rate[0].time == LastValidTime	   L44 : evita duplicar barras con el mismo timestamp.
+// LastValidTime = rate[0].time 	   L46 : actualiza el control solo si se exporta una barra valida.
 
 #include <Files\FileTxt.mqh>  // Incluye la libreria para manejo de archivos de texto
 
@@ -24,19 +27,24 @@ void OnStart()
    }
 
    FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");    //--- Escribe la cabecera del archivo CSV
+   datetime lastValidTime = 0;                                                 // Dato para validacion de bara valida 
 
    for(datetime t = startDate; t <= endDate; t += periodSeconds)               ///--- Bucle para recorrer y exportar cada barra
    {
       MqlRates rate[];                                                         //--- Declara array para almacenar los datos de la barra
       int copied = CopyRates(symbol, timeframe, t, 1, rate);                   //--- Copia los datos de la barra desde el grafico
                                                                                //--- Si no se pudo copiar la barra, escribe "ERROR" en el archivo
-      if(copied <= 0 || ArraySize(rate) == 0 || rate[0].time < startDate || rate[0].time > endDate) 
+      if(copied <= 0 || ArraySize(rate) == 0 || rate[0].time < startDate || rate[0].time > endDate || rate[0].open == 0.0) 
       {
          FileWrite(fileHandle,
                    TimeToString(t, TIME_DATE | TIME_MINUTES),
                    "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
          continue;
       }
+      if(rate[0].time == lastValidTime)                                       // Evitar duplicados por tiempo
+         continue;
+      lastValidTime = rate[0].time;
+
       FileWrite(fileHandle,                                                    //--- Escribe los datos reales de la barra en el archivo CSV
                 TimeToString(rate[0].time, TIME_DATE | TIME_MINUTES),
                 rate[0].open,
