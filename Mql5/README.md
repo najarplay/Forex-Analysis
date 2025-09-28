@@ -12,3 +12,7 @@ Se pulio un poco el codigo quitando la selecion de baras por una selecion de per
 
 ## scrip .03
 Se presentaron errores de sobre escritura y la implementacion en las lineas (37, 44, 46) evitan este error 
+
+## scrip .04
+Ampliacion de generacion de archivos CSV : Genera todos los archivos del mes desde el dia 01 al ultimo del mes las lineas (18,a,55)
+generan la logica para tener la cantidad de dias del mes y el (siclo for) para generar todos los CSV del mes 
