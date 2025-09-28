@@ -32,6 +32,14 @@ Time	Open	High	Low	Close	Volume
 ## scip .06 
 Carpetas : separe los datos inversos y originales en carpetas para no tenerlos revueltos 
 
+## scrip .07 
+Ampliacion robusta : modificacion para generar todas las divisas de metatrader 5 y iterar todos los meses del año 
+Files : organisacion de encarpetado generado para la organisacion de la bace de datos 
+└── AUD
+    └── AUDCAD
+        └── 2025
+            └── 01
+                └── AUDCAD-2025-01-01-X.csv
 
 
 
