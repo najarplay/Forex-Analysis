@@ -29,6 +29,10 @@ Time	Open	High	Low	Close	Volume
 2025.07.01 00:00	0.848543	0.849105	0.848543	0.848853	6
 2025.07.01 00:01	0.848853	0.849372	0.848853	0.848911	4
 
+## scip .06 
+Carpetas : separe los datos inversos y originales en carpetas para no tenerlos revueltos 
+
+
 
 
 
