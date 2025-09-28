@@ -9,3 +9,6 @@ Time	Open	High	Low	Close	Volume
 
 ## scrip .02 
 Se pulio un poco el codigo quitando la selecion de baras por una selecion de periodo de tiempo , esto ayuda a espesificar los datos
+
+## scrip .03
+Se presentaron errores de sobre escritura y la implementacion en las lineas (37, 44, 46) evitan este error 
