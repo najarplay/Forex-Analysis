@@ -6,23 +6,18 @@
 // Parametros configurables por el usuario
 input string symbol = "EURUSD";                      // Simbolo del instrumento (ej. EURUSD)
 input ENUM_TIMEFRAMES timeframe = PERIOD_M1;         // Marco temporal (ej. PERIOD_M1 = 1 minuto)
-// Nuevas entradas para rango de fechas
 input int year  = 2025;                              // año
 input int month = 7;                                 // mes 
 string dayInitials[7]={"D","L","M","X","J","V","S"}; // dias de la semana 
 
 void OnStart()
 {
-   int periodSeconds = PeriodSeconds(timeframe);                                  //--- Calcula la duracion de cada vela en segundos
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+   int periodSeconds = PeriodSeconds(timeframe);                                  // Calcula la duracion de cada vela en segundos
    datetime firstNextMonth;                                                       // Calcula el primer dia del mes siguiente
    if(month == 12)                                                                // Si es diciembre, el siguiente mes es enero del año siguiente
       firstNextMonth = StringToTime(StringFormat("%04d.01.01 00:00", year + 1));
    else                                                                           // Si no, simplemente avanza al mes siguiente dentro del mismo año
       firstNextMonth = StringToTime(StringFormat("%04d.%02d.01 00:00", year, month + 1));
-
    datetime lastDayOfMonth = firstNextMonth - 86400;                              // Resta un dia (86400 seg) para obtener el ultimo dia del mes actual
    MqlDateTime dtLast = {};                                                       // Estructura para descomponer la fecha
    TimeToStruct(lastDayOfMonth, dtLast);                                          // Convierte la fecha en estructura para extraer el numero de dias
@@ -32,7 +27,6 @@ void OnStart()
    {
       datetime t0 = StringToTime(StringFormat("%04d.%02d.%02d 00:00", year, month, day)); // Inicio del dia
       datetime t1 = t0 + 86399;                                                   // Fin del dia (23:59:59)
-
       MqlDateTime dt = {};                                                        // Estructura para obtener el dia de la semana
       if(!TimeToStruct(t0, dt))                                                   // Si falla la conversion, muestra error y salta al siguiente dia
       {
@@ -42,47 +36,68 @@ void OnStart()
 
       int weekday = dt.day_of_week;                                               // Dia de la semana (0 = domingo, 1 = lunes, ...)
       string initial = dayInitials[weekday];                                      // Inicial del dia (ej. "L" para lunes)
-
       string filename = StringFormat("%s-%04d-%02d-%02d-%s.csv", symbol, year, month, day, initial); // Nombre del archivo
       int fileHandle = FileOpen(filename, FILE_WRITE | FILE_CSV | FILE_ANSI);     // Abre archivo CSV para escritura
-
       if(fileHandle == INVALID_HANDLE)                                            // Si falla la apertura, muestra error y salta al siguiente dia
       {
          Print("Error al abrir archivo: ", filename, " | ", GetLastError());
          continue;
       }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-      FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");    //--- Escribe la cabecera del archivo CSV
-      datetime lastValidTime = 0;                                                 // Dato para validacion de bara valida 
-
-      for(datetime t = t0; t <= t1; t += periodSeconds)                           ///--- Bucle para recorrer y exportar cada barra
+      FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");    // Escribe la cabecera del archivo CSV
+      
+      ///////////////////////////////// 🔁 Preparar archivo inverso //////////////////////////////////////////////
+      string reverSym = StringSubstr(symbol, 3) + StringSubstr(symbol, 0, 3);     // AUDNZD → NZDAUD
+      string reverFil = StringFormat("%s-%04d-%02d-%02d-%s.csv", reverSym, year, month, day, initial);// Nombre del archivo
+      int reversedHandle = FileOpen(reverFil, FILE_WRITE | FILE_CSV | FILE_ANSI); // Abre archivo CSV para escritura
+      if(reversedHandle == INVALID_HANDLE)
       {
-         MqlRates rate[];                                                         //--- Declara array para almacenar los datos de la barra
-         int copied = CopyRates(symbol, timeframe, t, 1, rate);                   //--- Copia los datos de la barra desde el grafico
-                                                                                  //--- Si no se pudo copiar la barra, escribe "ERROR" en el archivo
+         Print("❌ Error al abrir archivo inverso: ", reverFil, " | ", GetLastError());
+         FileClose(fileHandle);
+         continue;
+      }
+
+      FileWrite(reversedHandle, "Time", "Open", "High", "Low", "Close", "Volume"); // Escribe la cabecera del archivo CSV
+
+      datetime lastValidTime = 0;                                                  // Dato para validacion de bara valida 
+
+      for(datetime t = t0; t <= t1; t += periodSeconds)                            // Bucle para recorrer y exportar cada barra
+      {
+         MqlRates rate[];                                                          // Declara array para almacenar los datos de la barra
+         int copied = CopyRates(symbol, timeframe, t, 1, rate);                    // Copia los datos de la barra desde el grafico
+                                                                                   // Si no se pudo copiar la barra, escribe "ERROR" en el archivo
          if(copied <= 0 || ArraySize(rate) == 0 || rate[0].time < t0 || rate[0].time > t1 || rate[0].open == 0.0) 
          {
-            FileWrite(fileHandle,
-                     TimeToString(t, TIME_DATE | TIME_MINUTES),
-                     "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
+            string timeStr = TimeToString(t, TIME_DATE | TIME_MINUTES);
+            FileWrite(fileHandle, timeStr, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
+            FileWrite(reversedHandle, timeStr, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
             continue;
          }
+
          if(rate[0].time == lastValidTime)                                       // Evitar duplicados por tiempo
             continue;
          lastValidTime = rate[0].time;
 
-         FileWrite(fileHandle,                                                    //--- Escribe los datos reales de la barra en el archivo CSV
-                  TimeToString(rate[0].time, TIME_DATE | TIME_MINUTES),
-                  rate[0].open,
-                  rate[0].high,
-                  rate[0].low,
-                  rate[0].close,
-                  rate[0].tick_volume);
+         string timeStr = TimeToString(rate[0].time, TIME_DATE | TIME_MINUTES);
+         FileWrite(fileHandle,                    // Original                    // Escribe los datos reales de la barra en el archivo CSV
+                   timeStr,
+                   rate[0].open,
+                   rate[0].high,
+                   rate[0].low,
+                   rate[0].close,
+                   rate[0].tick_volume);
+         FileWrite(reversedHandle,                // Reversed                    // Escribe los datos reales de la barra en el archivo CSV
+                   timeStr,
+                   NormalizeDouble(1.0 / rate[0].open, 6),
+                   NormalizeDouble(1.0 / rate[0].low, 6),
+                   NormalizeDouble(1.0 / rate[0].high, 6),
+                   NormalizeDouble(1.0 / rate[0].close, 6),
+                   rate[0].tick_volume);
       }
-   
-      FileClose(fileHandle);                                                      //--- Cierra el archivo despues de completar la exportacion
-      Print("Archivo exportado con manejo de errores: ", filename);               //--- Mensaje de confirmacion en el terminal
+      
+      FileClose(fileHandle);                                                      // Cierra el archivo despues de completar la exportacion
+      FileClose(reversedHandle);                                                  // Cierra el archivo inverso
+      Print("Archivo exportado con manejo de errores: ", filename);               // Mensaje de confirmacion en el terminal
    }
 }
+      
