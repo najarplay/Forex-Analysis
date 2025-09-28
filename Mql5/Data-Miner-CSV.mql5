@@ -1,4 +1,4 @@
-// Script: Data-Miner-csv.mq5                                       
+   // Script: Data-Miner-csv.mq5                                       
 // Descripcion: Exporta datos OHLC desde MetaTrader a un archivo CSV, con manejo de errores por barra faltante.   
 
 #include <Files\FileTxt.mqh>  // Incluye la libreria para manejo de archivos de texto
@@ -13,6 +13,15 @@ string dayInitials[7]={"D","L","M","X","J","V","S"}; // dias de la semana
 void OnStart()
 {
    int periodSeconds = PeriodSeconds(timeframe);                                  // Calcula la duracion de cada vela en segundos
+//////////////////////////////////// creacion carpetas /////////////////////////////////////
+   string folderA = "Datos_" + symbol;                                            // Crear carpetas A si no existen
+   string reverSym = StringSubstr(symbol, 3) + StringSubstr(symbol, 0, 3);        // AUDNZD → NZDAUD
+   string folderB = "Datos_" + reverSym;                                          // Crear carpetas B si no existen
+   if(!FolderCreate(folderA))                                                     // Alerta de error de creacion Folder A
+      Print("No se pudo crear carpeta A: ", folderA);
+   if(!FolderCreate(folderB))                                                     // Alerta de error de creacion Folder b
+      Print("No se pudo crear carpeta B: ", folderB);
+/////////////////////////////////////////////////////////////////////////////////////////////      
    datetime firstNextMonth;                                                       // Calcula el primer dia del mes siguiente
    if(month == 12)                                                                // Si es diciembre, el siguiente mes es enero del año siguiente
       firstNextMonth = StringToTime(StringFormat("%04d.01.01 00:00", year + 1));
@@ -36,29 +45,26 @@ void OnStart()
 
       int weekday = dt.day_of_week;                                               // Dia de la semana (0 = domingo, 1 = lunes, ...)
       string initial = dayInitials[weekday];                                      // Inicial del dia (ej. "L" para lunes)
-      string filename = StringFormat("%s-%04d-%02d-%02d-%s.csv", symbol, year, month, day, initial); // Nombre del archivo
+///////      
+      string filename = StringFormat("%s\\%s-%04d-%02d-%02d-%s.csv", folderA, symbol, year, month, day, initial); // Nombre del archivo
       int fileHandle = FileOpen(filename, FILE_WRITE | FILE_CSV | FILE_ANSI);     // Abre archivo CSV para escritura
       if(fileHandle == INVALID_HANDLE)                                            // Si falla la apertura, muestra error y salta al siguiente dia
       {
          Print("Error al abrir archivo: ", filename, " | ", GetLastError());
          continue;
       }
-
       FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");    // Escribe la cabecera del archivo CSV
-      
-      ///////////////////////////////// 🔁 Preparar archivo inverso //////////////////////////////////////////////
-      string reverSym = StringSubstr(symbol, 3) + StringSubstr(symbol, 0, 3);     // AUDNZD → NZDAUD
-      string reverFil = StringFormat("%s-%04d-%02d-%02d-%s.csv", reverSym, year, month, day, initial);// Nombre del archivo
+///////      
+      string reverFil = StringFormat("%s\\%s-%04d-%02d-%02d-%s.csv", folderB, reverSym, year, month, day, initial);// Nombre del archivo
       int reversedHandle = FileOpen(reverFil, FILE_WRITE | FILE_CSV | FILE_ANSI); // Abre archivo CSV para escritura
       if(reversedHandle == INVALID_HANDLE)
       {
-         Print("❌ Error al abrir archivo inverso: ", reverFil, " | ", GetLastError());
+         Print("Error al abrir archivo inverso: ", reverFil, " | ", GetLastError());
          FileClose(fileHandle);
          continue;
       }
-
       FileWrite(reversedHandle, "Time", "Open", "High", "Low", "Close", "Volume"); // Escribe la cabecera del archivo CSV
-
+///////
       datetime lastValidTime = 0;                                                  // Dato para validacion de bara valida 
 
       for(datetime t = t0; t <= t1; t += periodSeconds)                            // Bucle para recorrer y exportar cada barra
@@ -77,7 +83,7 @@ void OnStart()
          if(rate[0].time == lastValidTime)                                       // Evitar duplicados por tiempo
             continue;
          lastValidTime = rate[0].time;
-
+         
          string timeStr = TimeToString(rate[0].time, TIME_DATE | TIME_MINUTES);
          FileWrite(fileHandle,                    // Original                    // Escribe los datos reales de la barra en el archivo CSV
                    timeStr,
@@ -100,4 +106,3 @@ void OnStart()
       Print("Archivo exportado con manejo de errores: ", filename);               // Mensaje de confirmacion en el terminal
    }
 }
-      
