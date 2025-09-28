@@ -1,108 +1,113 @@
-   // Script: Data-Miner-csv.mq5                                       
+// Script: Data-Miner-csv.mq5                                       
 // Descripcion: Exporta datos OHLC desde MetaTrader a un archivo CSV, con manejo de errores por barra faltante.   
 
 #include <Files\FileTxt.mqh>  // Incluye la libreria para manejo de archivos de texto
 
 // Parametros configurables por el usuario
-input string symbol = "EURUSD";                      // Simbolo del instrumento (ej. EURUSD)
-input ENUM_TIMEFRAMES timeframe = PERIOD_M1;         // Marco temporal (ej. PERIOD_M1 = 1 minuto)
-input int year  = 2025;                              // año
-input int month = 7;                                 // mes 
-string dayInitials[7]={"D","L","M","X","J","V","S"}; // dias de la semana 
+string s1 = "AUDCAD,AUDCHF,AUDJPY,AUDNZD,AUDUSD,CADCHF,CADJPY,CHFJPY,CHFSGD,EURAUD,EURCAD,EURCHF,EURDKK,EURGBP" ; // 14
+string s2 = "EURHUF,EURHKD,EURJPY,EURNOK,EURNZD,EURPLN,EURSEK,EURSGD,EURTRY,EURUSD,EURZAR,GBPAUD,GBPCAD,GBPCHF" ; // 14 
+string s3 = "GBPDKK,GBPJPY,GBPNOK,GBPNZD,GBPSGD,GBPSEK,GBPUSD,NZDCAD,NZDCHF,NZDJPY,NZDSGD,NZDUSD,SGDJPY,USDCAD" ; // 14
+string s4 = "USDCHF,USDCNH,USDDKK,USDHKD,USDHUF,USDJPY,USDMXN,USDNOK,USDPLN,USDSEK,USDSGD,USDTRY,USDZAR";         // 13
+string symbolList = s1 + "," + s2 + "," + s3 + "," + s4 ;            // lista completa de simbolos                    // 55 -> 342
+ENUM_TIMEFRAMES timeframe = PERIOD_M1;               // Marco temporal (ej. PERIOD_M1 = 1 minuto)
+int year  = 2025;                                    // Año
+int months[] = {1,2,3,4,5,6,7,8,9,10,11,12};         // Mes 
+string dayInitials[7]={"D","L","M","X","J","V","S"}; // Dias de la semana 
 
 void OnStart()
 {
+   string symbols[];                                                              // Creamos la lista para los simbolos 
+   StringSplit(symbolList, ',', symbols);                                         // Separo apartir de "," la lista symbolList
    int periodSeconds = PeriodSeconds(timeframe);                                  // Calcula la duracion de cada vela en segundos
-//////////////////////////////////// creacion carpetas /////////////////////////////////////
-   string folderA = "Datos_" + symbol;                                            // Crear carpetas A si no existen
-   string reverSym = StringSubstr(symbol, 3) + StringSubstr(symbol, 0, 3);        // AUDNZD → NZDAUD
-   string folderB = "Datos_" + reverSym;                                          // Crear carpetas B si no existen
-   if(!FolderCreate(folderA))                                                     // Alerta de error de creacion Folder A
-      Print("No se pudo crear carpeta A: ", folderA);
-   if(!FolderCreate(folderB))                                                     // Alerta de error de creacion Folder b
-      Print("No se pudo crear carpeta B: ", folderB);
-/////////////////////////////////////////////////////////////////////////////////////////////      
-   datetime firstNextMonth;                                                       // Calcula el primer dia del mes siguiente
-   if(month == 12)                                                                // Si es diciembre, el siguiente mes es enero del año siguiente
-      firstNextMonth = StringToTime(StringFormat("%04d.01.01 00:00", year + 1));
-   else                                                                           // Si no, simplemente avanza al mes siguiente dentro del mismo año
-      firstNextMonth = StringToTime(StringFormat("%04d.%02d.01 00:00", year, month + 1));
-   datetime lastDayOfMonth = firstNextMonth - 86400;                              // Resta un dia (86400 seg) para obtener el ultimo dia del mes actual
-   MqlDateTime dtLast = {};                                                       // Estructura para descomponer la fecha
-   TimeToStruct(lastDayOfMonth, dtLast);                                          // Convierte la fecha en estructura para extraer el numero de dias
-   int daysInMonth = dtLast.day;                                                  // Numero total de dias en el mes
-
-   for(int day = 1; day <= daysInMonth; day++)                                    // Itera por cada dia del mes
+//////////////////////////////////////////siclo for para iterar cada divisa//////////////////////////////////////////////////
+   for(int s = 0; s < ArraySize(symbols); s++)///--- iteracion por divisa -> AUDCAD ---///
    {
-      datetime t0 = StringToTime(StringFormat("%04d.%02d.%02d 00:00", year, month, day)); // Inicio del dia
-      datetime t1 = t0 + 86399;                                                   // Fin del dia (23:59:59)
-      MqlDateTime dt = {};                                                        // Estructura para obtener el dia de la semana
-      if(!TimeToStruct(t0, dt))                                                   // Si falla la conversion, muestra error y salta al siguiente dia
-      {
-         Print("Error al convertir fecha: ", t0, " | ", GetLastError());
-         continue;
-      }
+      string symbol = symbols[s];                                                 // Iteracion de divisa
+      string base = StringSubstr(symbol, 0, 3);                                   // Nombre original    -> AUD
+      string inverse = StringSubstr(symbol, 3);                                   // Nombre original    -> CAD
+      string reversed = StringSubstr(symbol, 3) + StringSubstr(symbol, 0, 3);     // Nombre reversed    -> CADAUD
+      string folderSymbol = base + "\\" + symbol;                                 // Nombre folder a    -> AUD\AUDCAD
+      string folderReversed = inverse + "\\" + reversed;                          // Nombre folder b    -> AUD\CADAUD
+      FolderCreate(base);                                                         // Crea folder de divisa         -> AUD 
+      FolderCreate(inverse);                                                      // crea folder de divisa         -> CAD
+      FolderCreate(folderSymbol);                                                 // Crea folder de par de divisas -> AUDCAD
+      FolderCreate(folderReversed);                                               // Crea folder de inversa        -> CADAUD
 
-      int weekday = dt.day_of_week;                                               // Dia de la semana (0 = domingo, 1 = lunes, ...)
-      string initial = dayInitials[weekday];                                      // Inicial del dia (ej. "L" para lunes)
-///////      
-      string filename = StringFormat("%s\\%s-%04d-%02d-%02d-%s.csv", folderA, symbol, year, month, day, initial); // Nombre del archivo
-      int fileHandle = FileOpen(filename, FILE_WRITE | FILE_CSV | FILE_ANSI);     // Abre archivo CSV para escritura
-      if(fileHandle == INVALID_HANDLE)                                            // Si falla la apertura, muestra error y salta al siguiente dia
+      for(int m = 0; m < ArraySize(months); m++) ///--- Iteracion por cada mes de la  -> AUDCAD ---///
       {
-         Print("Error al abrir archivo: ", filename, " | ", GetLastError());
-         continue;
-      }
-      FileWrite(fileHandle, "Time", "Open", "High", "Low", "Close", "Volume");    // Escribe la cabecera del archivo CSV
-///////      
-      string reverFil = StringFormat("%s\\%s-%04d-%02d-%02d-%s.csv", folderB, reverSym, year, month, day, initial);// Nombre del archivo
-      int reversedHandle = FileOpen(reverFil, FILE_WRITE | FILE_CSV | FILE_ANSI); // Abre archivo CSV para escritura
-      if(reversedHandle == INVALID_HANDLE)
-      {
-         Print("Error al abrir archivo inverso: ", reverFil, " | ", GetLastError());
-         FileClose(fileHandle);
-         continue;
-      }
-      FileWrite(reversedHandle, "Time", "Open", "High", "Low", "Close", "Volume"); // Escribe la cabecera del archivo CSV
-///////
-      datetime lastValidTime = 0;                                                  // Dato para validacion de bara valida 
+         int month = months[m];                                                   // Calcula los dias del mes de cada mes 
+         datetime firstNextMonth = (month == 12)                                  // Calcula el primer dia del mes siguiente
+            ? StringToTime(StringFormat("%04d.01.01 00:00", year + 1))            // Si es diciembre, el siguiente mes es enero
+            : StringToTime(StringFormat("%04d.%02d.01 00:00", year, month + 1));  // Si no, simplemente avanza al mes siguiente 
+         datetime lastDayOfMonth = firstNextMonth - 86400; // Resta un dia (86400 seg) para obtener el ultimo dia del mes actual
+         MqlDateTime dtLast;                                                      // Estructura para descomponer la fecha
+         TimeToStruct(lastDayOfMonth, dtLast);             // Convierte la fecha en estructura para extraer el numero de dias
+         int daysInMonth = dtLast.day;                                            // Numero total de dias en el mes
 
-      for(datetime t = t0; t <= t1; t += periodSeconds)                            // Bucle para recorrer y exportar cada barra
-      {
-         MqlRates rate[];                                                          // Declara array para almacenar los datos de la barra
-         int copied = CopyRates(symbol, timeframe, t, 1, rate);                    // Copia los datos de la barra desde el grafico
-                                                                                   // Si no se pudo copiar la barra, escribe "ERROR" en el archivo
-         if(copied <= 0 || ArraySize(rate) == 0 || rate[0].time < t0 || rate[0].time > t1 || rate[0].open == 0.0) 
+         string monthStr = StringFormat("%02d", month);                           // Combierte el mes en dijito (Enero -> 01)
+         string yearStr = IntegerToString(year);                                  // El año en curso 
+         string pathA = folderSymbol + "\\" + yearStr + "\\" + monthStr;          // AUDCAD\2025\01
+         string pathB = folderReversed + "\\" + yearStr + "\\" + monthStr;        // CADAUD\2025\01
+         FolderCreate(pathA);                                                     // Crea el folder del mes de la divisa
+         FolderCreate(pathB);                                                     // Crea el folder de la inversa 
+
+         for(int day = 1; day <= daysInMonth; day++)// linea 43 ///--- Iteracion por cada dia del mes ---///
          {
-            string timeStr = TimeToString(t, TIME_DATE | TIME_MINUTES);
-            FileWrite(fileHandle, timeStr, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
-            FileWrite(reversedHandle, timeStr, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
-            continue;
-         }
+            datetime t0 = StringToTime(StringFormat("%04d.%02d.%02d 00:00", year, month, day)); // Inicio del dia
+            datetime t1 = t0 + 86399;                                             // Fin del dia (23:59:59)
+            MqlDateTime dt;                                                       // Estructura para obtener el dia de la semana
+            TimeToStruct(t0, dt);
+            string initial = dayInitials[dt.day_of_week];                         // dia de la semana -> L 
+            string dayStr = StringFormat("%02d", day);                            // Dia del mes      -> 01
+            MqlRates test[];
+            if(CopyRates(symbol, timeframe, t0, 1, test) <= 0 || test[0].open <= 0.0){continue;}// Verificación previa: ¿hay datos?
 
-         if(rate[0].time == lastValidTime)                                       // Evitar duplicados por tiempo
-            continue;
-         lastValidTime = rate[0].time;
-         
-         string timeStr = TimeToString(rate[0].time, TIME_DATE | TIME_MINUTES);
-         FileWrite(fileHandle,                    // Original                    // Escribe los datos reales de la barra en el archivo CSV
-                   timeStr,
-                   rate[0].open,
-                   rate[0].high,
-                   rate[0].low,
-                   rate[0].close,
-                   rate[0].tick_volume);
-         FileWrite(reversedHandle,                // Reversed                    // Escribe los datos reales de la barra en el archivo CSV
-                   timeStr,
-                   NormalizeDouble(1.0 / rate[0].open, 6),
-                   NormalizeDouble(1.0 / rate[0].low, 6),
-                   NormalizeDouble(1.0 / rate[0].high, 6),
-                   NormalizeDouble(1.0 / rate[0].close, 6),
-                   rate[0].tick_volume);
+            string filenameA = pathA + "\\" + symbol + "-" + yearStr + "-" + monthStr + "-" + dayStr + "-" + initial + ".csv";
+            string filenameB = pathB + "\\" + reversed + "-" + yearStr + "-" + monthStr + "-" + dayStr + "-" + initial + ".csv";
+            int handleA = FileOpen(filenameA, FILE_WRITE | FILE_CSV | FILE_ANSI); // Crea -> AUDCAD\2025\01 -> AUDCAD-2025-01-01-L.CSV
+            int handleB = FileOpen(filenameB, FILE_WRITE | FILE_CSV | FILE_ANSI); // Crea -> CADAUD\2025\01 -> CADAUD-2025-01-01-L.CSV
+            if(handleA == INVALID_HANDLE || handleB == INVALID_HANDLE)            // Si falla la apertura, muestra error y salta el dia
+            {
+               Print("Error al abrir archivos para ", symbol);
+               continue;
+            }
+            FileWrite(handleA, "Time", "Open", "High", "Low", "Close", "Volume");  // Escribe la cabecera del archivo CSV -> AUDCAD
+            FileWrite(handleB, "Time", "Open", "High", "Low", "Close", "Volume");  // Escribe la cabecera del archivo CSV -> CADAUD
+
+            datetime lastValid = 0;                                                // Dato para validacion de bara valida 
+
+            for(datetime t = t0; t <= t1; t += periodSeconds)                      // Bucle para recorrer y exportar cada barra
+            {
+               MqlRates rate[];                                                    // Declara array para almacenar los datos de la barra
+               int copied = CopyRates(symbol, timeframe, t, 1, rate);              // Copia los datos de la barra desde el grafico
+               string timeStr = TimeToString(t, TIME_DATE | TIME_MINUTES);         // se saco por que se usa no solo en el (if) 
+                                                                          // Si no se pudo copiar la barra, escribe "ERROR" en el archivo
+               if(copied <= 0 || ArraySize(rate) == 0 || rate[0].open <= 0.0 || rate[0].time == lastValid)// Evitar duplicados por tiempo
+               {
+                  FileWrite(handleA, timeStr, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
+                  FileWrite(handleB, timeStr, "ERROR", "ERROR", "ERROR", "ERROR", "ERROR");
+                  continue;
+               }
+               lastValid = rate[0].time;
+
+               FileWrite(handleA, timeStr,    // Original // Escribe los datos reales de la barra en el archivo CSV
+                          rate[0].open, 
+                          rate[0].high, 
+                          rate[0].low, 
+                          rate[0].close, 
+                          rate[0].tick_volume);
+               FileWrite(handleB, timeStr,    // Reversed // Escribe los datos reales de la barra en el archivo CSV
+                         NormalizeDouble(1.0 / rate[0].open, 6),
+                         NormalizeDouble(1.0 / rate[0].low, 6),
+                         NormalizeDouble(1.0 / rate[0].high, 6),
+                         NormalizeDouble(1.0 / rate[0].close, 6),
+                         rate[0].tick_volume);
+            }
+
+            FileClose(handleA);                                                // Cierra el archivo despues de completar la exportacion
+            FileClose(handleB);                                                // Cierra el archivo inverso
+            Print("Archivo exportado con manejo de errores: ");                // Mensaje de confirmacion en el terminal
+         }
       }
-      
-      FileClose(fileHandle);                                                      // Cierra el archivo despues de completar la exportacion
-      FileClose(reversedHandle);                                                  // Cierra el archivo inverso
-      Print("Archivo exportado con manejo de errores: ", filename);               // Mensaje de confirmacion en el terminal
    }
 }
